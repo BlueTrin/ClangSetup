@@ -1,0 +1,13 @@
+main.dSYM/Contents/Info.plist
+main.dSYM/Contents/Resources/DWARF/main
+main.dSYM/Contents/Resources/Relocations/aarch64/main.yml
+logs/.DS_Store
+logs/create.log
+logs/payload_saved.json
+logs/payload.json
+logs/pretooluse.error.log
+logs/response.json
+logs/session.log
+logs/tools.log
+.DS_Store
+scripts/inverse.py
