@@ -64,6 +64,34 @@ check_prereqs() {
   export _NT_SYMBOL_PATH="$(cygpath -w "${SYMBOL_PATH}")"
 }
 
+# Split a comma-separated symbol/pattern list into one pattern per line.
+#
+# The caller quotes the whole list as a single argument, so 'ns1::*,ns2::*'
+# arrives here intact. Surrounding whitespace is trimmed and empty elements are
+# dropped, which makes 'ns1::* , ns2::*' and 'ns1::*,,ns2::*' both yield two
+# patterns. Returns non-zero if nothing usable is left, so callers can die with
+# a message naming the original input.
+#
+# read -a does the splitting rather than an unquoted expansion, because the
+# patterns contain * and would otherwise be glob-expanded against the cwd.
+split_patterns() {
+  local list="$1" item
+  local -a parts=() out=()
+
+  IFS=',' read -r -a parts <<< "${list}"
+
+  for item in "${parts[@]}"; do
+    item="${item#"${item%%[![:space:]]*}"}"
+    item="${item%"${item##*[![:space:]]}"}"
+    if [[ -n "${item}" ]]; then
+      out+=("${item}")
+    fi
+  done
+
+  (( ${#out[@]} )) || return 1
+  printf '%s\n' "${out[@]}"
+}
+
 # Module name as cdb sees it: the exe basename without extension.
 module_name() { basename "${TARGET_EXE}" .exe; }
 
