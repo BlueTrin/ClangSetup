@@ -1,0 +1,70 @@
+#!/usr/bin/env bash
+#
+# Shared configuration and helpers for the cdb wrapper scripts.
+# Sourced by where-called.sh and trace-calls.sh -- not meant to be run directly.
+#
+# Override any of these from the environment:
+#   TARGET_EXE   full path to the executable under investigation
+#   CDB_EXE      full path to cdb.exe
+#   SYMBOL_PATH  directory containing the .pdb files (defaults to the exe's dir)
+
+set -euo pipefail
+
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+repo_root="$(cd "${script_dir}/.." && pwd)"
+
+: "${TARGET_EXE:=${repo_root}/build/pricer.exe}"
+: "${CDB_EXE:=/c/Program Files (x86)/Windows Kits/10/Debuggers/x64/cdb.exe}"
+: "${SYMBOL_PATH:=$(dirname "${TARGET_EXE}")}"
+
+# Git Bash rewrites arguments that look like POSIX paths before handing them to
+# a native .exe. cdb command strings contain characters MSYS likes to mangle, so
+# turn the conversion off for everything we launch from here.
+export MSYS2_ARG_CONV_EXCL='*'
+
+die() { printf 'error: %s\n' "$*" >&2; exit 1; }
+
+# Verify the tools and inputs exist before we launch anything, so failures are
+# a clear message rather than a confusing cdb error.
+check_prereqs() {
+  [[ -x "${CDB_EXE}" ]] || die "cdb not found at: ${CDB_EXE} (set CDB_EXE)"
+  [[ -f "${TARGET_EXE}" ]] || die "target exe not found at: ${TARGET_EXE} (set TARGET_EXE)"
+
+  local pdb_count
+  pdb_count="$(find "${SYMBOL_PATH}" -maxdepth 1 -name '*.pdb' 2>/dev/null | wc -l)"
+  if [[ "${pdb_count}" -eq 0 ]]; then
+    printf 'warning: no .pdb files under %s -- output will show addresses, not function names\n' \
+      "${SYMBOL_PATH}" >&2
+  fi
+
+  export _NT_SYMBOL_PATH="$(cygpath -w "${SYMBOL_PATH}")"
+}
+
+# Module name as cdb sees it: the exe basename without extension.
+module_name() { basename "${TARGET_EXE}" .exe; }
+
+# Run a cdb command script (read from stdin) against TARGET_EXE.
+#
+# Using a script file via -cf avoids the nested-quoting nightmare of passing
+# cdb commands through -c from bash. Remaining arguments are forwarded to the
+# target program.
+run_cdb_script() {
+  local cdb_script tmp_out rc
+  cdb_script="$(mktemp --suffix=.cdb)"
+  tmp_out="$(mktemp --suffix=.log)"
+  trap 'rm -f "${cdb_script}" "${tmp_out}"' RETURN
+
+  cat > "${cdb_script}"
+
+  set +e
+  "${CDB_EXE}" \
+    -lines \
+    -cf "$(cygpath -w "${cdb_script}")" \
+    "$(cygpath -w "${TARGET_EXE}")" "$@" \
+    > "${tmp_out}" 2>&1
+  rc=$?
+  set -e
+
+  cat "${tmp_out}"
+  return "${rc}"
+}
