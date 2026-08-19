@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+#
+# trace-calls.sh -- log every function matching a pattern, in execution order.
+#
+# The no-rebuild replacement for adding a log line to find out where control
+# actually goes. Prints one line per call and lets the program run to the end.
+#
+# Usage:
+#   ./trace-calls.sh <pattern> [program args...]
+#
+# Example:
+#   ./trace-calls.sh 'Discounter::*'      --trade 12345
+#   ./trace-calls.sh '*Curve*::build*'    --trade 12345
+#
+# Warning: broad patterns are slow. '*::*' will set tens of thousands of
+# breakpoints and take minutes. Start narrow and widen only if you must.
+
+set -euo pipefail
+
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_cdb-common.sh"
+
+if [[ $# -lt 1 ]]; then
+  printf 'usage: %s <pattern> [program args...]\n' "$(basename "$0")" >&2
+  printf "example: %s 'Discounter::*' --trade 12345\n" "$(basename "$0")" >&2
+  exit 2
+fi
+
+pattern="$1"
+shift
+
+check_prereqs
+module="$(module_name)"
+
+# bm with a command  -- set breakpoints and attach an action to each
+# .printf "%y"       -- print the symbol at the current instruction pointer
+# gc                 -- "go from conditional breakpoint": resume immediately
+# g                  -- run to completion
+#
+# \$scopeip is escaped so bash leaves it for cdb to expand.
+run_cdb_script "$@" <<CDB
+.echo === tracing ${module}!${pattern} ===
+bm ${module}!${pattern} ".printf \"CALL %y\\n\", @\$scopeip; gc"
+g
+.echo === target exited ===
+q
+CDB
