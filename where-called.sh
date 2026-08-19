@@ -6,11 +6,11 @@
 # Use it to confirm a call path before assuming one from reading the code.
 #
 # Usage:
-#   ./where-called.sh <symbol> [program args...]
+#   ./where-called.sh <config> <symbol> [program args...]
 #
 # Example:
-#   ./where-called.sh Discounter::df --trade 12345
-#   ./where-called.sh 'OisDiscounter::*' --trade 12345
+#   ./where-called.sh checked Discounter::df --trade 12345
+#   ./where-called.sh optimised 'OisDiscounter::*' --trade 12345
 #
 # The symbol is matched inside the target module only. Wildcards are allowed.
 
@@ -18,14 +18,15 @@ set -euo pipefail
 
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_cdb-common.sh"
 
-if [[ $# -lt 1 ]]; then
-  printf 'usage: %s <symbol> [program args...]\n' "$(basename "$0")" >&2
-  printf 'example: %s Discounter::df --trade 12345\n' "$(basename "$0")" >&2
+if [[ $# -lt 2 ]]; then
+  printf 'usage: %s <config> <symbol> [program args...]\n' "$(basename "$0")" >&2
+  printf 'example: %s checked Discounter::df --trade 12345\n' "$(basename "$0")" >&2
   exit 2
 fi
 
-symbol="$1"
-shift
+use_config "$1"
+symbol="$2"
+shift 2
 
 check_prereqs
 module="$(module_name)"
@@ -38,7 +39,9 @@ run_cdb_script "$@" <<CDB
 .echo === breakpoints set on ${module}!${symbol} ===
 bm ${module}!${symbol}
 g
-.echo === call stack at first hit ===
+.echo === STOP REASON (breakpoint, exception, or exit) ===
+.lastevent
+.echo === STACK AT STOP ===
 k
 q
 CDB

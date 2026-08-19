@@ -13,8 +13,32 @@ set -euo pipefail
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "${script_dir}/.." && pwd)"
 
-: "${TARGET_EXE:=${repo_root}/build/pricer.exe}"
+: "${BUILD_ROOT:=${repo_root}/build}"
+: "${EXE_NAME:=pricer.exe}"
 : "${CDB_EXE:=/c/Program Files (x86)/Windows Kits/10/Debuggers/x64/cdb.exe}"
+
+# Resolve TARGET_EXE and SYMBOL_PATH from a build config name (e.g. "checked").
+# Layout assumed: ${BUILD_ROOT}/<config>/${EXE_NAME}
+# Override BUILD_ROOT or EXE_NAME from the environment if yours differs.
+use_config() {
+  local config="$1"
+  [[ -n "${config}" ]] || die "no build config given"
+
+  local dir="${BUILD_ROOT}/${config}"
+  [[ -d "${dir}" ]] || die "no such build config: ${config} (looked in ${dir})"
+
+  TARGET_EXE="${dir}/${EXE_NAME}"
+  : "${SYMBOL_PATH:=${dir}}"
+  export TARGET_EXE SYMBOL_PATH
+
+  # Per-config environment, if the config needs one. Optional.
+  local env_file="${dir}/debug-env.sh"
+  [[ -f "${env_file}" ]] && source "${env_file}"
+
+  return 0
+}
+
+: "${TARGET_EXE:=${BUILD_ROOT}/checked/${EXE_NAME}}"
 : "${SYMBOL_PATH:=$(dirname "${TARGET_EXE}")}"
 
 # Git Bash rewrites arguments that look like POSIX paths before handing them to
